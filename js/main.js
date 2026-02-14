@@ -20,6 +20,9 @@ class TysonPlayer {
         this.supportedVideoFormats = ['.mp4', '.mkv', '.mov', '.wmv', '.webm', '.m4v', '.3gp', '.mpeg', '.mpg', '.flv'];
         this.supportedImageFormats = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
         this.lastProgressUpdateTime = 0;
+        this.thumbnailQueue = [];
+        this.thumbnailActiveCount = 0;
+        this.maxConcurrentThumbnailLoads = 2;
         
         this.init();
     }
@@ -311,6 +314,7 @@ class TysonPlayer {
 
         this.loadedCount = 0;
         this.isRenderScheduled = false;
+        this.resetThumbnailQueue();
         this.loadMoreFiles();
     }
 
@@ -332,7 +336,7 @@ class TysonPlayer {
                 fragment.appendChild(item);
 
                 if (this.viewMode === 'grid' && file.type === 'video') {
-                    this.loadVideoThumbnail(file.path, item);
+                    this.enqueueVideoThumbnail(file.path, item);
                 }
             }
 
@@ -361,9 +365,33 @@ class TysonPlayer {
     }
 
     // FEATURE: Real video thumbnails
-    loadVideoThumbnail(videoPath, itemElement) {
+    resetThumbnailQueue() {
+        this.thumbnailQueue = [];
+        this.thumbnailActiveCount = 0;
+    }
+
+    enqueueVideoThumbnail(videoPath, itemElement) {
+        this.thumbnailQueue.push({ videoPath, itemElement });
+        this.processThumbnailQueue();
+    }
+
+    processThumbnailQueue() {
+        while (this.thumbnailActiveCount < this.maxConcurrentThumbnailLoads && this.thumbnailQueue.length > 0) {
+            const next = this.thumbnailQueue.shift();
+            this.thumbnailActiveCount += 1;
+            this.loadVideoThumbnail(next.videoPath, next.itemElement, () => {
+                this.thumbnailActiveCount = Math.max(0, this.thumbnailActiveCount - 1);
+                this.processThumbnailQueue();
+            });
+        }
+    }
+
+    loadVideoThumbnail(videoPath, itemElement, done) {
         const thumbEl = itemElement.querySelector('.grid-thumb');
-        if (!thumbEl || thumbEl.dataset.thumbReady === 'true') return;
+        if (!thumbEl || thumbEl.dataset.thumbReady === 'true' || this.viewMode !== 'grid') {
+            done();
+            return;
+        }
 
         const video = document.createElement('video');
         video.className = 'thumb-video';
@@ -373,35 +401,44 @@ class TysonPlayer {
         video.src = 'file://' + videoPath;
 
         const loadingEl = thumbEl.querySelector('.thumb-loading');
-        const markLoaded = () => {
-            thumbEl.dataset.thumbReady = 'true';
-            if (loadingEl) loadingEl.remove();
+        let completed = false;
+        const finish = (loaded) => {
+            if (completed) return;
+            completed = true;
+            clearTimeout(timeoutId);
+            thumbEl.dataset.thumbReady = loaded ? 'true' : 'error';
+            if (loadingEl && loaded) loadingEl.remove();
+            if (loadingEl && !loaded) loadingEl.textContent = '🎬';
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+            video.remove();
+            done();
         };
 
-        video.addEventListener('loadeddata', () => {
+        const timeoutId = setTimeout(() => finish(false), 5000);
+
+        video.addEventListener('loadedmetadata', () => {
             const targetTime = Number.isFinite(video.duration) && video.duration > 0
                 ? Math.min(2, video.duration / 6)
                 : 0;
-            if (targetTime > 0) {
-                video.currentTime = targetTime;
-            } else {
-                video.pause();
-                markLoaded();
-            }
+            if (targetTime > 0) video.currentTime = targetTime;
+            else finish(true);
         }, { once: true });
 
         video.addEventListener('seeked', () => {
-            video.pause();
-            markLoaded();
+            clearTimeout(timeoutId);
+            finish(true);
         }, { once: true });
 
         video.addEventListener('error', () => {
-            video.remove();
-            if (loadingEl) loadingEl.textContent = '🎬';
+            clearTimeout(timeoutId);
+            finish(false);
         }, { once: true });
 
         thumbEl.prepend(video);
     }
+
 
 
     selectFile() {
