@@ -221,12 +221,21 @@ body {
 }
 
 .loading {
+    min-height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 14px;
     text-align: center;
-    padding: 100px;
+    font-size: 34px;
+    color: #94a8ff;
+}
+
+.loading-message {
+    min-height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
     font-size: 34px;
     color: #94a8ff;
 }

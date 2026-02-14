@@ -427,7 +427,23 @@ class TysonPlayer {
         }, { once: true });
 
         video.addEventListener('seeked', () => {
-            clearTimeout(timeoutId);
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 320;
+                canvas.height = 180;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                thumbEl.style.backgroundImage = `url('${canvas.toDataURL('image/jpeg', 0.65)}')`;
+                thumbEl.style.backgroundSize = 'cover';
+                thumbEl.style.backgroundPosition = 'center';
+            } catch (error) {
+                thumbEl.prepend(video);
+                clearTimeout(timeoutId);
+                thumbEl.dataset.thumbReady = 'true';
+                if (loadingEl) loadingEl.remove();
+                done();
+                return;
+            }
             finish(true);
         }, { once: true });
 
@@ -571,8 +587,14 @@ class TysonPlayer {
     }
 
     showMessage(message) {
-        const loader = '<span class="loader-spinner" aria-hidden="true"></span>';
-        document.getElementById('file-list').innerHTML = `<div class="loading">${loader}<span>${message}</span></div>`;
+        const fileList = document.getElementById('file-list');
+        const loadingOnlyMessages = ['Loading...', 'Scanning USB...'];
+        if (loadingOnlyMessages.includes(message)) {
+            fileList.innerHTML = '<div class="loading"><span class="loader-spinner" aria-hidden="true"></span></div>';
+            return;
+        }
+
+        fileList.innerHTML = `<div class="loading-message">${message}</div>`;
     }
 }
 
