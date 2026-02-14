@@ -134,6 +134,11 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
+}
+
+.thumb-video {
+    display: none;
 }
 
 .thumb-img {
@@ -144,6 +149,8 @@ body {
 
 .thumb-loading {
     color: #667eea;
+    font-size: 48px;
+    z-index: 1;
 }
 
 .play-icon {
@@ -158,6 +165,7 @@ body {
     align-items: center;
     justify-content: center;
     padding-left: 8px;
+    z-index: 2;
 }
 
 .grid-icon {

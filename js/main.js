@@ -310,10 +310,25 @@ class TysonPlayer {
             
             if (this.viewMode === 'grid') {
                 if (file.type === 'video') {
-                    item.innerHTML = `<div class="grid-thumb"><div class="thumb-loading">🎬</div><div class="play-icon">▶</div></div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
-                    // Note: Canvas thumbnail blocked by Tizen security
+                    // Create video element for thumbnail
+                    item.innerHTML = `
+                        <div class="grid-thumb" id="thumb-${i}">
+                            <video class="thumb-video" 
+                                   src="file://${file.path}" 
+                                   preload="metadata"
+                                   muted
+                                   style="display:none;">
+                            </video>
+                            <div class="thumb-loading">🎬</div>
+                            <div class="play-icon">▶</div>
+                        </div>
+                        <div class="grid-name">${file.name}</div>
+                        <div class="grid-size">${file.size}</div>
+                    `;
+                    // Load thumbnail after element is added
+                    setTimeout(() => this.loadVideoThumbnailDirect(file.path, i), 100);
                 } else if (file.type === 'image') {
-                    item.innerHTML = `<div class="grid-thumb" style="background-image: url('file://${file.path}'); background-size: cover; background-position: center;"><div class="play-icon" style="display:none;">🖼️</div></div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
+                    item.innerHTML = `<div class="grid-thumb" style="background-image: url('file://${file.path}'); background-size: cover; background-position: center;"></div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
                 } else {
                     item.innerHTML = `<div class="grid-icon">${file.icon}</div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
                 }
@@ -325,55 +340,46 @@ class TysonPlayer {
         this.loadedCount = endIndex;
     }
 
-    // FEATURE: Real video thumbnails
-    loadVideoThumbnail(videoPath, itemElement) {
-        console.log('Attempting to load thumbnail for:', videoPath);
-        const thumbEl = itemElement.querySelector('.grid-thumb');
-        if (!thumbEl) {
-            console.log('No thumb element found');
-            return;
-        }
+    // FEATURE: Video thumbnail using video poster
+    loadVideoThumbnailDirect(videoPath, index) {
+        const thumbEl = document.getElementById(`thumb-${index}`);
+        if (!thumbEl) return;
         
-        const video = document.createElement('video');
-        video.style.display = 'none';
-        video.src = 'file://' + videoPath;
-        video.muted = true;
-        video.preload = 'metadata';
-        video.crossOrigin = 'anonymous';
+        const videoEl = thumbEl.querySelector('.thumb-video');
+        const loadingEl = thumbEl.querySelector('.thumb-loading');
         
-        video.addEventListener('loadeddata', () => {
-            console.log('Video loaded, duration:', video.duration);
-            video.currentTime = Math.min(5, video.duration * 0.1);
+        if (!videoEl) return;
+        
+        // Try to capture first frame
+        videoEl.addEventListener('loadeddata', () => {
+            try {
+                // Set current time to 2 seconds (or 10% of duration)
+                videoEl.currentTime = Math.min(2, videoEl.duration * 0.1);
+            } catch (e) {
+                console.log('Cannot seek video:', e);
+            }
         });
         
-        video.addEventListener('seeked', () => {
-            console.log('Video seeked, attempting canvas capture');
+        videoEl.addEventListener('seeked', () => {
             try {
-                const canvas = document.createElement('canvas');
-                canvas.width = 320;
-                canvas.height = 180;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, 320, 180);
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-                console.log('Thumbnail generated successfully');
-                thumbEl.style.backgroundImage = `url('${dataUrl}')`;
-                thumbEl.style.backgroundSize = 'cover';
-                thumbEl.style.backgroundPosition = 'center';
-                const loadingEl = thumbEl.querySelector('.thumb-loading');
+                // Show video element as thumbnail
+                videoEl.style.display = 'block';
+                videoEl.style.width = '100%';
+                videoEl.style.height = '100%';
+                videoEl.style.objectFit = 'cover';
+                videoEl.style.position = 'absolute';
+                videoEl.style.top = '0';
+                videoEl.style.left = '0';
                 if (loadingEl) loadingEl.style.display = 'none';
             } catch (e) {
-                console.error('Thumbnail generation error:', e);
-                alert('Thumbnail Error: ' + e.message + '\nTizen may block canvas access for security.');
+                console.log('Cannot display video frame:', e);
             }
-            video.remove();
         });
         
-        video.addEventListener('error', (e) => {
-            console.error('Video loading error:', e);
-            video.remove();
+        videoEl.addEventListener('error', (e) => {
+            console.log('Video thumbnail load error:', e);
+            if (loadingEl) loadingEl.textContent = '🎬';
         });
-        
-        document.body.appendChild(video);
     }
 
     selectFile() {
