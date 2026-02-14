@@ -409,14 +409,20 @@ class TysonPlayer {
             thumbEl.dataset.thumbReady = loaded ? 'true' : 'error';
             if (loadingEl && loaded) loadingEl.remove();
             if (loadingEl && !loaded) loadingEl.textContent = '🎬';
-            video.pause();
-            video.removeAttribute('src');
-            video.load();
-            video.remove();
+
+            if (!loaded) {
+                video.pause();
+                video.removeAttribute('src');
+                video.load();
+                video.remove();
+            } else {
+                video.pause();
+            }
+
             done();
         };
 
-        const timeoutId = setTimeout(() => finish(false), 5000);
+        const timeoutId = setTimeout(() => finish(false), 6000);
 
         video.addEventListener('loadedmetadata', () => {
             const targetTime = Number.isFinite(video.duration) && video.duration > 0
@@ -427,28 +433,10 @@ class TysonPlayer {
         }, { once: true });
 
         video.addEventListener('seeked', () => {
-            try {
-                const canvas = document.createElement('canvas');
-                canvas.width = 320;
-                canvas.height = 180;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                thumbEl.style.backgroundImage = `url('${canvas.toDataURL('image/jpeg', 0.65)}')`;
-                thumbEl.style.backgroundSize = 'cover';
-                thumbEl.style.backgroundPosition = 'center';
-            } catch (error) {
-                thumbEl.prepend(video);
-                clearTimeout(timeoutId);
-                thumbEl.dataset.thumbReady = 'true';
-                if (loadingEl) loadingEl.remove();
-                done();
-                return;
-            }
             finish(true);
         }, { once: true });
 
         video.addEventListener('error', () => {
-            clearTimeout(timeoutId);
             finish(false);
         }, { once: true });
 
