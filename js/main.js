@@ -17,6 +17,7 @@ class TysonPlayer {
         this.loadedCount = 0;
         this.supportedVideoFormats = ['.mp4', '.mkv', '.mov', '.wmv', '.webm', '.m4v', '.3gp', '.mpeg', '.mpg', '.flv'];
         this.supportedImageFormats = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
+        this.lastProgressUpdateTime = 0;
         
         this.init();
     }
@@ -52,10 +53,16 @@ class TysonPlayer {
         });
         
         this.videoElement.addEventListener('timeupdate', () => {
-            const percent = (this.videoElement.currentTime / this.videoElement.duration) * 100;
+            const now = performance.now();
+            if (now - this.lastProgressUpdateTime < 150) return;
+            this.lastProgressUpdateTime = now;
+
+            const duration = this.videoElement.duration || 0;
+            const currentTime = this.videoElement.currentTime || 0;
+            const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
             document.getElementById('progress-fill').style.width = percent + '%';
-            const current = this.formatTime(this.videoElement.currentTime);
-            const total = this.formatTime(this.videoElement.duration);
+            const current = this.formatTime(currentTime);
+            const total = this.formatTime(duration);
             document.getElementById('video-time').textContent = `${current} / ${total}`;
         });
         
@@ -65,7 +72,7 @@ class TysonPlayer {
             if (fileList.scrollTop + fileList.clientHeight >= fileList.scrollHeight - 300) {
                 this.loadMoreFiles();
             }
-        });
+        }, { passive: true });
         
         document.getElementById('btn-view-toggle').onclick = () => this.toggleViewMode();
         document.getElementById('btn-play-pause').onclick = () => this.togglePlayPause();
@@ -195,7 +202,7 @@ class TysonPlayer {
         items.forEach((item, i) => {
             if (i === this.focusedIndex) {
                 item.classList.add('focused');
-                item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                item.scrollIntoView({ behavior: 'auto', block: 'nearest' });
             } else {
                 item.classList.remove('focused');
             }
@@ -257,13 +264,16 @@ class TysonPlayer {
                 dir.listFiles((files) => {
                     // PERFORMANCE: Process async
                     setTimeout(() => {
-                        this.fileList = files.map(file => ({
-                            name: file.name,
-                            path: file.fullPath,
-                            type: file.isDirectory ? 'folder' : (this.isVideoFile(file.name) ? 'video' : (this.isImageFile(file.name) ? 'image' : 'file')),
-                            size: file.isDirectory ? '' : this.formatSize(file.fileSize),
-                            icon: file.isDirectory ? '📁' : (this.isVideoFile(file.name) ? '🎬' : (this.isImageFile(file.name) ? '🖼️' : '📄'))
-                        }));
+                        this.fileList = files.map(file => {
+                            const fileMeta = this.getFileMeta(file);
+                            return {
+                                name: file.name,
+                                path: file.fullPath,
+                                type: fileMeta.type,
+                                size: file.isDirectory ? '' : this.formatSize(file.fileSize),
+                                icon: fileMeta.icon
+                            };
+                        });
                         this.fileList.sort((a, b) => {
                             if (a.type === 'folder' && b.type !== 'folder') return -1;
                             if (a.type !== 'folder' && b.type === 'folder') return 1;
@@ -302,27 +312,32 @@ class TysonPlayer {
         if (this.loadedCount >= this.fileList.length) return;
         const fileListEl = document.getElementById('file-list');
         const endIndex = Math.min(this.loadedCount + this.batchSize, this.fileList.length);
-        
+        const fragment = document.createDocumentFragment();
+
         for (let i = this.loadedCount; i < endIndex; i++) {
             const file = this.fileList[i];
             const item = document.createElement('div');
             item.className = 'file-item' + (i === this.focusedIndex ? ' focused' : '');
-            
-            if (this.viewMode === 'grid') {
-                if (file.type === 'video') {
-                    item.innerHTML = `<div class="grid-thumb"><div class="thumb-loading">🎬</div><div class="play-icon">▶</div></div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
-                    // Note: Canvas thumbnail blocked by Tizen security
-                } else if (file.type === 'image') {
-                    item.innerHTML = `<div class="grid-thumb" style="background-image: url('file://${file.path}'); background-size: cover; background-position: center;"><div class="play-icon" style="display:none;">🖼️</div></div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
-                } else {
-                    item.innerHTML = `<div class="grid-icon">${file.icon}</div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
-                }
-            } else {
-                item.innerHTML = `<span class="file-icon">${file.icon}</span><span class="file-name">${file.name}</span><span class="file-size">${file.size}</span>`;
-            }
-            fileListEl.appendChild(item);
+            item.innerHTML = this.getFileMarkup(file);
+            fragment.appendChild(item);
         }
+
+        fileListEl.appendChild(fragment);
         this.loadedCount = endIndex;
+    }
+
+    getFileMarkup(file) {
+        if (this.viewMode === 'grid') {
+            if (file.type === 'video') {
+                return `<div class="grid-thumb"><div class="thumb-loading">🎬</div><div class="play-icon">▶</div></div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
+            }
+            if (file.type === 'image') {
+                return `<div class="grid-thumb" style="background-image: url('file://${file.path}'); background-size: cover; background-position: center;"><div class="play-icon" style="display:none;">🖼️</div></div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
+            }
+            return `<div class="grid-icon">${file.icon}</div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
+        }
+
+        return `<span class="file-icon">${file.icon}</span><span class="file-name">${file.name}</span><span class="file-size">${file.size}</span>`;
     }
 
     // FEATURE: Real video thumbnails
@@ -471,13 +486,21 @@ class TysonPlayer {
         this.currentScreen = screenName;
     }
 
-    isVideoFile(filename) {
-        return this.supportedVideoFormats.some(ext => filename.toLowerCase().endsWith(ext));
+    getFileMeta(file) {
+        if (file.isDirectory) return { type: 'folder', icon: '📁' };
+        const lowerName = file.name.toLowerCase();
+        if (this.isVideoFile(lowerName)) return { type: 'video', icon: '🎬' };
+        if (this.isImageFile(lowerName)) return { type: 'image', icon: '🖼️' };
+        return { type: 'file', icon: '📄' };
     }
 
 
+    isVideoFile(filename) {
+        return this.supportedVideoFormats.some(ext => filename.endsWith(ext));
+    }
+
     isImageFile(filename) {
-        return this.supportedImageFormats.some(ext => filename.toLowerCase().endsWith(ext));
+        return this.supportedImageFormats.some(ext => filename.endsWith(ext));
     }
 
     formatSize(bytes) {
