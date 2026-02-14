@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Tyson Player</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Browser Screen -->
+        <div id="browser-screen" class="screen active">
+            <div class="header">
+                <div>
+                    <h1>🎬 Tyson Player</h1>
+                    <div class="current-path" id="current-path">/</div>
+                </div>
+                <button id="btn-view-toggle">⊞ Grid</button>
+            </div>
+            <div class="file-list list-view" id="file-list">
+                <div class="loading">Scanning USB...</div>
+            </div>
+            <div class="footer">
+                ↑↓ Navigate | OK - Select | Back - Go Back | Red - Toggle View
+            </div>
+        </div>
+
+        <!-- Video Player Screen -->
+        <div id="player-screen" class="screen">
+            <video id="video-player"></video>
+            
+            <div id="controls-overlay" class="controls-overlay">
+                <div class="controls-header">
+                    <span id="video-title">Video</span>
+                    <span id="video-time">00:00 / 00:00</span>
+                </div>
+                
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                </div>
+                
+                <div class="control-buttons">
+                    <button id="btn-play-pause" class="icon-btn">
+                        <img src="images/pause.svg" alt="Pause">
+                    </button>
+                    <button id="btn-rewind" class="icon-btn">
+                        <img src="images/rewind.svg" alt="Rewind">
+                    </button>
+                    <button id="btn-forward" class="icon-btn">
+                        <img src="images/forward.svg" alt="Forward">
+                    </button>
+                    <button id="btn-back" class="icon-btn">
+                        <img src="images/back.svg" alt="Back">
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Viewer Screen -->
+        <div id="image-screen" class="screen">
+            <div class="image-container">
+                <img id="image-viewer" src="" alt="Image">
+            </div>
+            <div class="image-info">
+                <span id="image-name">Image Name</span>
+                <span class="image-help">← → Navigate | Back - Close</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="$WEBAPIS/webapis/webapis.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
