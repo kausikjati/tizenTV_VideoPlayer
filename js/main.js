@@ -15,7 +15,7 @@ class TysonPlayer {
         this.viewMode = 'list';
         this.batchSize = 50; // PERFORMANCE: Load 50 at a time
         this.loadedCount = 0;
-        this.supportedVideoFormats = ['.mp4', '.mkv', '.mov', '.wmv', '.webm', '.m4v', '.3gp', '.mpeg', '.mpg'];
+        this.supportedVideoFormats = ['.mp4', '.mkv', '.mov', '.wmv', '.webm', '.m4v', '.3gp', '.mpeg', '.mpg', '.flv'];
         this.supportedImageFormats = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
         
         this.init();
@@ -394,6 +394,7 @@ class TysonPlayer {
             alert('⚠️ AVI Not Supported\\n\\nConvert to MP4');
             return;
         }
+
         this.videoElement.src = 'file://' + file.path;
         document.getElementById('video-title').textContent = file.name;
         this.showScreen('player');
@@ -401,6 +402,7 @@ class TysonPlayer {
         this.videoElement.play().catch(err => alert('Cannot play: ' + err.message));
         this.showControls();
     }
+
 
     // FEATURE: Image viewer
     viewImage(file) {
@@ -472,6 +474,7 @@ class TysonPlayer {
     isVideoFile(filename) {
         return this.supportedVideoFormats.some(ext => filename.toLowerCase().endsWith(ext));
     }
+
 
     isImageFile(filename) {
         return this.supportedImageFormats.some(ext => filename.toLowerCase().endsWith(ext));
