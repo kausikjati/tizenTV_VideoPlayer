@@ -363,53 +363,44 @@ class TysonPlayer {
     // FEATURE: Real video thumbnails
     loadVideoThumbnail(videoPath, itemElement) {
         const thumbEl = itemElement.querySelector('.grid-thumb');
-        if (!thumbEl) return;
+        if (!thumbEl || thumbEl.dataset.thumbReady === 'true') return;
 
         const video = document.createElement('video');
-        video.preload = 'metadata';
+        video.className = 'thumb-video';
         video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
         video.src = 'file://' + videoPath;
 
-        const cleanup = () => {
-            video.pause();
-            video.removeAttribute('src');
-            video.load();
-            video.remove();
+        const loadingEl = thumbEl.querySelector('.thumb-loading');
+        const markLoaded = () => {
+            thumbEl.dataset.thumbReady = 'true';
+            if (loadingEl) loadingEl.remove();
         };
 
         video.addEventListener('loadeddata', () => {
             const targetTime = Number.isFinite(video.duration) && video.duration > 0
-                ? Math.min(3, video.duration / 4)
-                : 1;
-            video.currentTime = targetTime;
+                ? Math.min(2, video.duration / 6)
+                : 0;
+            if (targetTime > 0) {
+                video.currentTime = targetTime;
+            } else {
+                video.pause();
+                markLoaded();
+            }
         }, { once: true });
 
         video.addEventListener('seeked', () => {
-            try {
-                const canvas = document.createElement('canvas');
-                canvas.width = 320;
-                canvas.height = 180;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, 320, 180);
-                thumbEl.style.backgroundImage = `url('${canvas.toDataURL('image/jpeg', 0.65)}')`;
-                thumbEl.style.backgroundSize = 'cover';
-                thumbEl.style.backgroundPosition = 'center';
-                const loadingEl = thumbEl.querySelector('.thumb-loading');
-                if (loadingEl) loadingEl.remove();
-            } catch (error) {
-                const loadingEl = thumbEl.querySelector('.thumb-loading');
-                if (loadingEl) loadingEl.textContent = '🎬';
-            }
-            cleanup();
+            video.pause();
+            markLoaded();
         }, { once: true });
 
         video.addEventListener('error', () => {
-            const loadingEl = thumbEl.querySelector('.thumb-loading');
+            video.remove();
             if (loadingEl) loadingEl.textContent = '🎬';
-            cleanup();
         }, { once: true });
 
-        document.body.appendChild(video);
+        thumbEl.prepend(video);
     }
 
 
