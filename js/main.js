@@ -27,10 +27,18 @@ class TysonPlayer {
 
     init() {
         console.log('Init Tyson Player with Enhanced Features');
-        this.videoElement = document.getElementById('video-player');
+        this.videoElement = document.getElementById('videojs-player'); // Switch to Video.js by default
         this.imageElement = document.getElementById('image-viewer');
         this.useAVPlay = false;
         
+        // Initialize Video.js
+        this.player = videojs('videojs-player', {
+            controls: false,
+            autoplay: false,
+            preload: 'auto',
+            fluid: true
+        });
+
         // Check if AVPlay is available for better codec support (HEVC, MKV, etc.)
         try {
             if (typeof webapis !== 'undefined' && webapis.avplay) {
@@ -67,21 +75,23 @@ class TysonPlayer {
     setupEventListeners() {
         document.addEventListener('keydown', (e) => this.handleKeyPress(e));
         
-        this.videoElement.addEventListener('play', () => {
+        this.player.on('play', () => {
             this.isPlaying = true;
             document.getElementById('btn-play-pause').innerHTML = '<img src="images/pause.svg">';
         });
         
-        this.videoElement.addEventListener('pause', () => {
-            this.isPlaying = false;
+        this.player.on('pause', () => {
+            this.isPlaying = true; // Still "active" in player mode
             document.getElementById('btn-play-pause').innerHTML = '<img src="images/play.svg">';
         });
         
-        this.videoElement.addEventListener('timeupdate', () => {
-            const percent = (this.videoElement.currentTime / this.videoElement.duration) * 100;
+        this.player.on('timeupdate', () => {
+            const currentTime = this.player.currentTime();
+            const duration = this.player.duration();
+            const percent = (currentTime / duration) * 100;
             document.getElementById('progress-fill').style.width = percent + '%';
-            const current = this.formatTime(this.videoElement.currentTime);
-            const total = this.formatTime(this.videoElement.duration);
+            const current = this.formatTime(currentTime);
+            const total = this.formatTime(duration);
             document.getElementById('video-time').textContent = `${current} / ${total}`;
         });
         
