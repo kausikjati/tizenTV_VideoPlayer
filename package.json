@@ -1,0 +1,15 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "## Features ✅ USB media browsing with folder navigation ✅ Video thumbnail support using Tizen Content API ✅ Grid view (5 columns) and List view ✅ Storage usage display ✅ Video playback with controls ✅ Image viewer with navigation ✅ Support for MP4, MKV, MOV, AVI and more ✅ Remote control navigation",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "serve": "^14.2.5"
+  }
+}
