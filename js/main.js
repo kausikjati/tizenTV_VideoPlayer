@@ -1,6 +1,158 @@
 // Tyson Player - With Performance, Thumbnails & Image Viewer
 
+class CustomTizenVideoPlayer {
+    constructor(videoElement) {
+        this.videoElement = videoElement;
+        this.hlsInstance = null;
+        this.dashInstance = null;
+        this.flvInstance = null;
+        this.loadedScripts = {};
+    }
+
+    async loadScriptOnce(url, globalName) {
+        if (window[globalName]) return;
+        if (this.loadedScripts[url]) {
+            await this.loadedScripts[url];
+            return;
+        }
+
+        this.loadedScripts[url] = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = url;
+            script.async = true;
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error(`Failed to load ${url}`));
+            document.head.appendChild(script);
+        });
+
+        await this.loadedScripts[url];
+        if (!window[globalName]) throw new Error(`${globalName} unavailable after script load`);
+    }
+
+    cleanup() {
+        if (this.hlsInstance) {
+            this.hlsInstance.destroy();
+            this.hlsInstance = null;
+        }
+
+        if (this.dashInstance) {
+            this.dashInstance.reset();
+            this.dashInstance = null;
+        }
+
+        if (this.flvInstance) {
+            this.flvInstance.destroy();
+            this.flvInstance = null;
+        }
+
+        this.videoElement.pause();
+        this.videoElement.removeAttribute('src');
+        this.videoElement.load();
+    }
+
+    getExtension(videoPath) {
+        const cleanPath = videoPath.split('?')[0].toLowerCase();
+        const lastDot = cleanPath.lastIndexOf('.');
+        return lastDot >= 0 ? cleanPath.slice(lastDot) : '';
+    }
+
+    async play(videoPath) {
+        const sourceUrl = `file://${videoPath}`;
+        const extension = this.getExtension(videoPath);
+        this.cleanup();
+
+        if (extension === '.m3u8') {
+            await this.playHls(sourceUrl);
+            return;
+        }
+
+        if (extension === '.mpd') {
+            await this.playDash(sourceUrl);
+            return;
+        }
+
+        if (extension === '.flv') {
+            await this.playFlv(sourceUrl);
+            return;
+        }
+
+        await this.playNative(sourceUrl);
+    }
+
+    async playNative(sourceUrl) {
+        this.videoElement.src = sourceUrl;
+        await this.videoElement.play();
+    }
+
+    async playHls(sourceUrl) {
+        if (this.videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+            await this.playNative(sourceUrl);
+            return;
+        }
+
+        await this.loadScriptOnce('https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js', 'Hls');
+        if (!window.Hls.isSupported()) throw new Error('HLS is not supported on this device.');
+
+        this.hlsInstance = new window.Hls({ enableWorker: true, lowLatencyMode: true });
+        this.hlsInstance.loadSource(sourceUrl);
+        this.hlsInstance.attachMedia(this.videoElement);
+
+        await new Promise((resolve, reject) => {
+            const onReady = () => {
+                this.videoElement.play().then(resolve).catch(reject);
+                this.hlsInstance.off(window.Hls.Events.MANIFEST_PARSED, onReady);
+                this.hlsInstance.off(window.Hls.Events.ERROR, onError);
+            };
+
+            const onError = (_, data) => {
+                if (data.fatal) {
+                    this.hlsInstance.off(window.Hls.Events.MANIFEST_PARSED, onReady);
+                    this.hlsInstance.off(window.Hls.Events.ERROR, onError);
+                    reject(new Error(`HLS fatal error: ${data.type}`));
+                }
+            };
+
+            this.hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, onReady);
+            this.hlsInstance.on(window.Hls.Events.ERROR, onError);
+        });
+    }
+
+    async playDash(sourceUrl) {
+        await this.loadScriptOnce('https://cdn.jsdelivr.net/npm/dashjs@4.7.4/dist/dash.all.min.js', 'dashjs');
+        this.dashInstance = window.dashjs.MediaPlayer().create();
+
+        await new Promise((resolve, reject) => {
+            const onCanPlay = () => {
+                this.videoElement.removeEventListener('canplay', onCanPlay);
+                this.videoElement.removeEventListener('error', onError);
+                this.videoElement.play().then(resolve).catch(reject);
+            };
+
+            const onError = () => {
+                this.videoElement.removeEventListener('canplay', onCanPlay);
+                this.videoElement.removeEventListener('error', onError);
+                reject(new Error('DASH playback error'));
+            };
+
+            this.videoElement.addEventListener('canplay', onCanPlay, { once: true });
+            this.videoElement.addEventListener('error', onError, { once: true });
+            this.dashInstance.initialize(this.videoElement, sourceUrl, false);
+        });
+    }
+
+    async playFlv(sourceUrl) {
+        await this.loadScriptOnce('https://cdn.jsdelivr.net/npm/flv.js@1.6.2/dist/flv.min.js', 'flvjs');
+        if (!window.flvjs.isSupported()) throw new Error('FLV is not supported on this device.');
+
+        this.flvInstance = window.flvjs.createPlayer({ type: 'flv', url: sourceUrl });
+        this.flvInstance.attachMediaElement(this.videoElement);
+        this.flvInstance.load();
+        await this.videoElement.play();
+    }
+}
+
 class TysonPlayer {
+
     constructor() {
         this.currentScreen = 'browser';
         this.currentPath = '/';
@@ -10,13 +162,20 @@ class TysonPlayer {
         this.controlFocused = -1;
         this.videoElement = null;
         this.imageElement = null;
+        this.customVideoPlayer = null;
         this.isPlaying = false;
         this.controlsTimeout = null;
         this.viewMode = 'list';
-        this.batchSize = 50; // PERFORMANCE: Load 50 at a time
+        this.batchSize = 40;
+        this.renderChunkSize = 20;
+        this.isRenderScheduled = false;
         this.loadedCount = 0;
-        this.supportedVideoFormats = ['.mp4', '.mkv', '.mov', '.wmv', '.webm', '.m4v', '.3gp', '.mpeg', '.mpg'];
+        this.supportedVideoFormats = ['.mp4', '.mkv', '.mov', '.wmv', '.webm', '.m4v', '.3gp', '.mpeg', '.mpg', '.flv', '.avi', '.m3u8', '.ts', '.m2ts', '.mpd'];
         this.supportedImageFormats = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
+        this.lastProgressUpdateTime = 0;
+        this.thumbnailQueue = [];
+        this.thumbnailActiveCount = 0;
+        this.maxConcurrentThumbnailLoads = 2;
         
         this.init();
     }
@@ -25,6 +184,7 @@ class TysonPlayer {
         console.log('Init with Performance Features');
         this.videoElement = document.getElementById('video-player');
         this.imageElement = document.getElementById('image-viewer');
+        this.customVideoPlayer = new CustomTizenVideoPlayer(this.videoElement);
         this.registerKeys();
         this.setupEventListeners();
         this.scanUSBDevices();
@@ -52,10 +212,16 @@ class TysonPlayer {
         });
         
         this.videoElement.addEventListener('timeupdate', () => {
-            const percent = (this.videoElement.currentTime / this.videoElement.duration) * 100;
+            const now = performance.now();
+            if (now - this.lastProgressUpdateTime < 150) return;
+            this.lastProgressUpdateTime = now;
+
+            const duration = this.videoElement.duration || 0;
+            const currentTime = this.videoElement.currentTime || 0;
+            const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
             document.getElementById('progress-fill').style.width = percent + '%';
-            const current = this.formatTime(this.videoElement.currentTime);
-            const total = this.formatTime(this.videoElement.duration);
+            const current = this.formatTime(currentTime);
+            const total = this.formatTime(duration);
             document.getElementById('video-time').textContent = `${current} / ${total}`;
         });
         
@@ -65,7 +231,7 @@ class TysonPlayer {
             if (fileList.scrollTop + fileList.clientHeight >= fileList.scrollHeight - 300) {
                 this.loadMoreFiles();
             }
-        });
+        }, { passive: true });
         
         document.getElementById('btn-view-toggle').onclick = () => this.toggleViewMode();
         document.getElementById('btn-play-pause').onclick = () => this.togglePlayPause();
@@ -106,7 +272,7 @@ class TysonPlayer {
                 this.controlFocused = -1;
                 this.updateControlFocus();
             } else {
-                this.videoElement.pause();
+                this.customVideoPlayer.cleanup();
                 this.showScreen('browser');
             }
         }
@@ -195,7 +361,7 @@ class TysonPlayer {
         items.forEach((item, i) => {
             if (i === this.focusedIndex) {
                 item.classList.add('focused');
-                item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                item.scrollIntoView({ behavior: 'auto', block: 'nearest' });
             } else {
                 item.classList.remove('focused');
             }
@@ -257,13 +423,16 @@ class TysonPlayer {
                 dir.listFiles((files) => {
                     // PERFORMANCE: Process async
                     setTimeout(() => {
-                        this.fileList = files.map(file => ({
-                            name: file.name,
-                            path: file.fullPath,
-                            type: file.isDirectory ? 'folder' : (this.isVideoFile(file.name) ? 'video' : (this.isImageFile(file.name) ? 'image' : 'file')),
-                            size: file.isDirectory ? '' : this.formatSize(file.fileSize),
-                            icon: file.isDirectory ? '📁' : (this.isVideoFile(file.name) ? '🎬' : (this.isImageFile(file.name) ? '🖼️' : '📄'))
-                        }));
+                        this.fileList = files.map(file => {
+                            const fileMeta = this.getFileMeta(file);
+                            return {
+                                name: file.name,
+                                path: file.fullPath,
+                                type: fileMeta.type,
+                                size: file.isDirectory ? '' : this.formatSize(file.fileSize),
+                                icon: fileMeta.icon
+                            };
+                        });
                         this.fileList.sort((a, b) => {
                             if (a.type === 'folder' && b.type !== 'folder') return -1;
                             if (a.type !== 'folder' && b.type === 'folder') return 1;
@@ -289,92 +458,146 @@ class TysonPlayer {
     }
 
     renderFileList() {
-        document.getElementById('file-list').innerHTML = '';
+        const fileListEl = document.getElementById('file-list');
+        fileListEl.innerHTML = '';
+
         if (this.fileList.length === 0) {
             this.showMessage('No files');
             return;
         }
+
+        this.loadedCount = 0;
+        this.isRenderScheduled = false;
+        this.resetThumbnailQueue();
         this.loadMoreFiles();
     }
 
-    // PERFORMANCE: Load files in batches
     loadMoreFiles() {
-        if (this.loadedCount >= this.fileList.length) return;
-        const fileListEl = document.getElementById('file-list');
-        const endIndex = Math.min(this.loadedCount + this.batchSize, this.fileList.length);
-        
-        for (let i = this.loadedCount; i < endIndex; i++) {
-            const file = this.fileList[i];
-            const item = document.createElement('div');
-            item.className = 'file-item' + (i === this.focusedIndex ? ' focused' : '');
-            
-            if (this.viewMode === 'grid') {
-                if (file.type === 'video') {
-                    item.innerHTML = `<div class="grid-thumb"><div class="thumb-loading">🎬</div><div class="play-icon">▶</div></div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
-                    // Note: Canvas thumbnail blocked by Tizen security
-                } else if (file.type === 'image') {
-                    item.innerHTML = `<div class="grid-thumb" style="background-image: url('file://${file.path}'); background-size: cover; background-position: center;"><div class="play-icon" style="display:none;">🖼️</div></div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
-                } else {
-                    item.innerHTML = `<div class="grid-icon">${file.icon}</div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
+        if (this.isRenderScheduled || this.loadedCount >= this.fileList.length) return;
+
+        this.isRenderScheduled = true;
+        requestAnimationFrame(() => {
+            const fileListEl = document.getElementById('file-list');
+            const maxEndIndex = Math.min(this.loadedCount + this.batchSize, this.fileList.length);
+            const endIndex = Math.min(this.loadedCount + this.renderChunkSize, maxEndIndex);
+            const fragment = document.createDocumentFragment();
+
+            for (let i = this.loadedCount; i < endIndex; i++) {
+                const file = this.fileList[i];
+                const item = document.createElement('div');
+                item.className = 'file-item' + (i === this.focusedIndex ? ' focused' : '');
+                item.innerHTML = this.getFileMarkup(file);
+                fragment.appendChild(item);
+
+                if (this.viewMode === 'grid' && file.type === 'video') {
+                    this.enqueueVideoThumbnail(file.path, item);
                 }
-            } else {
-                item.innerHTML = `<span class="file-icon">${file.icon}</span><span class="file-name">${file.name}</span><span class="file-size">${file.size}</span>`;
             }
-            fileListEl.appendChild(item);
+
+            fileListEl.appendChild(fragment);
+            this.loadedCount = endIndex;
+            this.isRenderScheduled = false;
+
+            if (this.loadedCount < maxEndIndex) {
+                this.loadMoreFiles();
+            }
+        });
+    }
+
+    getFileMarkup(file) {
+        if (this.viewMode === 'grid') {
+            if (file.type === 'video') {
+                return `<div class="grid-thumb"><div class="thumb-loading">🎬</div><div class="play-icon">▶</div></div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
+            }
+            if (file.type === 'image') {
+                return `<div class="grid-thumb" style="background-image: url('file://${file.path}'); background-size: cover; background-position: center;"><div class="play-icon" style="display:none;">🖼️</div></div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
+            }
+            return `<div class="grid-icon">${file.icon}</div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
         }
-        this.loadedCount = endIndex;
+
+        return `<span class="file-icon">${file.icon}</span><span class="file-name">${file.name}</span><span class="file-size">${file.size}</span>`;
     }
 
     // FEATURE: Real video thumbnails
-    loadVideoThumbnail(videoPath, itemElement) {
-        console.log('Attempting to load thumbnail for:', videoPath);
+    resetThumbnailQueue() {
+        this.thumbnailQueue = [];
+        this.thumbnailActiveCount = 0;
+    }
+
+    enqueueVideoThumbnail(videoPath, itemElement) {
+        this.thumbnailQueue.push({ videoPath, itemElement });
+        this.processThumbnailQueue();
+    }
+
+    processThumbnailQueue() {
+        while (this.thumbnailActiveCount < this.maxConcurrentThumbnailLoads && this.thumbnailQueue.length > 0) {
+            const next = this.thumbnailQueue.shift();
+            this.thumbnailActiveCount += 1;
+            this.loadVideoThumbnail(next.videoPath, next.itemElement, () => {
+                this.thumbnailActiveCount = Math.max(0, this.thumbnailActiveCount - 1);
+                this.processThumbnailQueue();
+            });
+        }
+    }
+
+    loadVideoThumbnail(videoPath, itemElement, done) {
         const thumbEl = itemElement.querySelector('.grid-thumb');
-        if (!thumbEl) {
-            console.log('No thumb element found');
+        if (!thumbEl || thumbEl.dataset.thumbReady === 'true' || this.viewMode !== 'grid') {
+            done();
             return;
         }
-        
+
         const video = document.createElement('video');
-        video.style.display = 'none';
-        video.src = 'file://' + videoPath;
+        video.className = 'thumb-video';
         video.muted = true;
+        video.playsInline = true;
         video.preload = 'metadata';
-        video.crossOrigin = 'anonymous';
-        
-        video.addEventListener('loadeddata', () => {
-            console.log('Video loaded, duration:', video.duration);
-            video.currentTime = Math.min(5, video.duration * 0.1);
-        });
-        
-        video.addEventListener('seeked', () => {
-            console.log('Video seeked, attempting canvas capture');
-            try {
-                const canvas = document.createElement('canvas');
-                canvas.width = 320;
-                canvas.height = 180;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, 320, 180);
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-                console.log('Thumbnail generated successfully');
-                thumbEl.style.backgroundImage = `url('${dataUrl}')`;
-                thumbEl.style.backgroundSize = 'cover';
-                thumbEl.style.backgroundPosition = 'center';
-                const loadingEl = thumbEl.querySelector('.thumb-loading');
-                if (loadingEl) loadingEl.style.display = 'none';
-            } catch (e) {
-                console.error('Thumbnail generation error:', e);
-                alert('Thumbnail Error: ' + e.message + '\nTizen may block canvas access for security.');
+        video.src = 'file://' + videoPath;
+
+        const loadingEl = thumbEl.querySelector('.thumb-loading');
+        let completed = false;
+        const finish = (loaded) => {
+            if (completed) return;
+            completed = true;
+            clearTimeout(timeoutId);
+            thumbEl.dataset.thumbReady = loaded ? 'true' : 'error';
+            if (loadingEl && loaded) loadingEl.remove();
+            if (loadingEl && !loaded) loadingEl.textContent = '🎬';
+
+            if (!loaded) {
+                video.pause();
+                video.removeAttribute('src');
+                video.load();
+                video.remove();
+            } else {
+                video.pause();
             }
-            video.remove();
-        });
-        
-        video.addEventListener('error', (e) => {
-            console.error('Video loading error:', e);
-            video.remove();
-        });
-        
-        document.body.appendChild(video);
+
+            done();
+        };
+
+        const timeoutId = setTimeout(() => finish(false), 6000);
+
+        video.addEventListener('loadedmetadata', () => {
+            const targetTime = Number.isFinite(video.duration) && video.duration > 0
+                ? Math.min(2, video.duration / 6)
+                : 0;
+            if (targetTime > 0) video.currentTime = targetTime;
+            else finish(true);
+        }, { once: true });
+
+        video.addEventListener('seeked', () => {
+            finish(true);
+        }, { once: true });
+
+        video.addEventListener('error', () => {
+            finish(false);
+        }, { once: true });
+
+        thumbEl.prepend(video);
     }
+
+
 
     selectFile() {
         const file = this.fileList[this.focusedIndex];
@@ -389,18 +612,21 @@ class TysonPlayer {
         else console.log('Unknown file type:', file.type);
     }
 
-    playVideo(file) {
-        if (file.name.toLowerCase().endsWith('.avi')) {
-            alert('⚠️ AVI Not Supported\\n\\nConvert to MP4');
-            return;
-        }
-        this.videoElement.src = 'file://' + file.path;
+    async playVideo(file) {
         document.getElementById('video-title').textContent = file.name;
         this.showScreen('player');
         this.controlFocused = -1;
-        this.videoElement.play().catch(err => alert('Cannot play: ' + err.message));
-        this.showControls();
+
+        try {
+            await this.customVideoPlayer.play(file.path);
+            this.showControls();
+        } catch (error) {
+            this.customVideoPlayer.cleanup();
+            this.showScreen('browser');
+            alert(`Cannot play this format on current device: ${error.message}`);
+        }
     }
+
 
     // FEATURE: Image viewer
     viewImage(file) {
@@ -469,12 +695,21 @@ class TysonPlayer {
         this.currentScreen = screenName;
     }
 
+    getFileMeta(file) {
+        if (file.isDirectory) return { type: 'folder', icon: '📁' };
+        const lowerName = file.name.toLowerCase();
+        if (this.isVideoFile(lowerName)) return { type: 'video', icon: '🎬' };
+        if (this.isImageFile(lowerName)) return { type: 'image', icon: '🖼️' };
+        return { type: 'file', icon: '📄' };
+    }
+
+
     isVideoFile(filename) {
-        return this.supportedVideoFormats.some(ext => filename.toLowerCase().endsWith(ext));
+        return this.supportedVideoFormats.some(ext => filename.endsWith(ext));
     }
 
     isImageFile(filename) {
-        return this.supportedImageFormats.some(ext => filename.toLowerCase().endsWith(ext));
+        return this.supportedImageFormats.some(ext => filename.endsWith(ext));
     }
 
     formatSize(bytes) {
@@ -495,7 +730,14 @@ class TysonPlayer {
     }
 
     showMessage(message) {
-        document.getElementById('file-list').innerHTML = `<div class="loading">${message}</div>`;
+        const fileList = document.getElementById('file-list');
+        const loadingOnlyMessages = ['Loading...', 'Scanning USB...'];
+        if (loadingOnlyMessages.includes(message)) {
+            fileList.innerHTML = '<div class="loading"><span class="loader-spinner" aria-hidden="true"></span></div>';
+            return;
+        }
+
+        fileList.innerHTML = `<div class="loading-message">${message}</div>`;
     }
 }
 
