@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="http://yourdomain.org/TysonPlayer" version="2.0.0" viewmodes="maximized">
+<widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="http://yourdomain.org/TysonPlayer" version="1.0.0" viewmodes="maximized">
     <tizen:application id="aJI6LdvAFz.TysonPlayer" package="aJI6LdvAFz" required_version="6.0"/>
     <content src="index.html"/>
     <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
@@ -8,10 +8,8 @@
     <tizen:privilege name="http://tizen.org/privilege/filesystem.read"/>
     <tizen:privilege name="http://tizen.org/privilege/filesystem.write"/>
     <tizen:privilege name="http://tizen.org/privilege/mediacontent.read"/>
-    <tizen:privilege name="http://tizen.org/privilege/content.read"/>
     <tizen:privilege name="http://tizen.org/privilege/volume.set"/>
     <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
-    <tizen:privilege name="http://tizen.org/privilege/externalstorage"/>
     <tizen:profile name="tv-samsung"/>
     <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
 </widget>

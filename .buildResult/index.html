@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Tyson Player</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="app">
+        <div id="browser-screen" class="screen active">
+            <div class="header">
+                <h1>🎬 Tyson Player</h1>
+                <div class="current-path" id="current-path">/</div>
+            </div>
+            <div class="file-list" id="file-list">
+                <div class="loading">Scanning for USB devices...</div>
+            </div>
+            <div class="footer">
+                <span>◀ Back</span>
+                <span>OK - Select</span>
+                <span>▶ Forward</span>
+            </div>
+        </div>
+
+        <div id="player-screen" class="screen">
+            <video id="video-player" controls></video>
+            <div id="subtitle-container"></div>
+            
+            <div id="controls-overlay" class="controls-overlay">
+                <div class="controls-header">
+                    <span id="video-title">Video Title</span>
+                    <span id="video-time">00:00 / 00:00</span>
+                </div>
+                <div class="controls-bar">
+                    <div class="progress-container">
+                        <div class="progress-bar" id="progress-bar">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                    </div>
+                    <div class="control-buttons">
+                        <button id="btn-play-pause">⏸ Pause</button>
+                        <button id="btn-rewind">⏪ -10s</button>
+                        <button id="btn-forward">⏩ +10s</button>
+                        <button id="btn-subtitle">💬 Subtitles</button>
+                        <button id="btn-playlist">📋 Playlist</button>
+                        <button id="btn-back">◀ Back</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="playlist-screen" class="screen">
+            <div class="header">
+                <h1>📋 Playlist</h1>
+            </div>
+            <div class="playlist-content" id="playlist-content">
+                <div class="playlist-empty">No videos in playlist</div>
+            </div>
+            <div class="footer">
+                <span>◀ Back</span>
+                <span>OK - Play</span>
+                <span>✕ Remove</span>
+            </div>
+        </div>
+
+        <div id="subtitle-screen" class="screen">
+            <div class="header">
+                <h1>💬 Select Subtitle</h1>
+            </div>
+            <div class="subtitle-list" id="subtitle-list">
+                <div class="subtitle-item" data-subtitle="none">
+                    <span>🚫 No Subtitles</span>
+                </div>
+            </div>
+            <div class="footer">
+                <span>◀ Back</span>
+                <span>OK - Select</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="$WEBAPIS/webapis/webapis.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
