@@ -10,23 +10,34 @@
         <!-- Browser Screen -->
         <div id="browser-screen" class="screen active">
             <div class="header">
-                <div>
-                    <h1>🎬 Tyson Player</h1>
+                <div class="header-left">
+                    <h1 id="usb-device-name">Tyson Player</h1>
                     <div class="current-path" id="current-path">/</div>
                 </div>
-                <button id="btn-view-toggle">⊞ Grid</button>
+                <button id="btn-view-toggle">☰ List</button>
             </div>
-            <div class="file-list list-view" id="file-list">
-                <div class="loading">Scanning USB...</div>
+            <div class="file-list grid-view" id="file-list">
+                <div class="loading-container">
+                    <div class="spinner"></div>
+                    <div class="loading-text">Scanning USB...</div>
+                </div>
             </div>
             <div class="footer">
-                ↑↓ Navigate | OK - Select | Back - Go Back | Red - Toggle View
+                ↑↓ Navigate | OK - Select | Back - Go Back
             </div>
         </div>
 
         <!-- Video Player Screen -->
         <div id="player-screen" class="screen">
-            <video id="video-player"></video>
+            <!-- AVPlay object for native player (supports HEVC, MKV, AVI) -->
+            <object id="av-player" type="application/avplayer" style="position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;"></object>
+            
+            <!-- HTML5 video fallback -->
+            <video id="video-player" class="video-js"></video>
+            
+            <!-- Video.js player (enhanced codec support) -->
+            <video id="videojs-player" class="video-js vjs-default-skin" style="position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; display: none;">
+            </video>
             
             <div id="controls-overlay" class="controls-overlay">
                 <div class="controls-header">
@@ -70,6 +81,11 @@
     </div>
 
     <script src="$WEBAPIS/webapis/webapis.js"></script>
+    
+    <!-- Video.js for enhanced codec support (fallback player) -->
+    <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet">
+    <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+    
     <script src="js/main.js"></script>
 </body>
 </html>

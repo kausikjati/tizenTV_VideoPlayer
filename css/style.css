@@ -26,71 +26,92 @@ body {
 }
 
 .header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    padding: 30px 60px;
+    background: linear-gradient(135deg, #1e90ff 0%, #00bfff 100%);
+    padding: 20px 60px;
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
+.header-left {
+    flex: 1;
+}
+
 .header h1 {
-    font-size: 48px;
+    font-size: 42px;
+    font-weight: bold;
+    margin-bottom: 5px;
 }
 
 .current-path {
-    font-size: 20px;
+    font-size: 18px;
     opacity: 0.9;
-    margin-top: 10px;
+    margin-top: 5px;
 }
 
 #btn-view-toggle {
     background: rgba(255,255,255,0.2);
-    border: 4px solid rgba(255,255,255,0.4);
-    border-radius: 12px;
-    padding: 20px 40px;
+    border: 3px solid rgba(255,255,255,0.4);
+    border-radius: 10px;
+    padding: 15px 35px;
     color: white;
-    font-size: 28px;
+    font-size: 24px;
     font-weight: bold;
     cursor: pointer;
+    transition: all 0.3s;
 }
 
 #btn-view-toggle.focused {
     background: white;
-    color: #667eea;
+    color: #1e90ff;
+    transform: scale(1.1);
 }
 
 .footer {
     background: rgba(20,20,20,0.95);
-    padding: 25px 60px;
-    font-size: 20px;
+    padding: 20px 60px;
+    font-size: 18px;
 }
 
 .file-list {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 30px 60px;
     background: #1a1a1a;
+    scroll-behavior: smooth;
 }
 
+/* Smooth scrolling optimization */
+.file-list {
+    will-change: scroll-position;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* List View */
 .file-list.list-view .file-item {
-    padding: 25px 30px;
-    margin: 15px 0;
+    padding: 20px 30px;
+    margin: 12px 0;
     background: #2a2a2a;
-    border-radius: 12px;
-    border: 4px solid transparent;
+    border-radius: 10px;
+    border: 3px solid transparent;
     display: flex;
     align-items: center;
     gap: 20px;
-    font-size: 26px;
+    font-size: 24px;
+    transition: all 0.3s;
 }
 
 .file-list.list-view .file-item.focused {
-    background: #667eea;
+    background: #1e90ff;
+    border-color: #00bfff;
+    transform: scale(1.03);
 }
 
 .file-icon {
-    font-size: 36px;
+    font-size: 32px;
     width: 50px;
+    text-align: center;
 }
 
 .file-name {
@@ -99,46 +120,47 @@ body {
 
 .file-size {
     color: #ccc;
+    font-size: 20px;
 }
 
+/* Grid View - 5 columns like screenshot */
 .file-list.grid-view {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 30px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 25px;
+    padding: 40px 60px;
 }
 
 .file-list.grid-view .file-item {
     background: #2a2a2a;
-    border-radius: 16px;
-    padding: 20px;
-    border: 5px solid transparent;
+    border-radius: 14px;
+    padding: 0;
+    border: 4px solid transparent;
     text-align: center;
-    height: 320px;
+    height: 280px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
+    transition: all 0.3s;
+    overflow: hidden;
 }
 
 .file-list.grid-view .file-item.focused {
-    background: #667eea;
+    border-color: #1e90ff;
+    background: #3a3a3a;
+    transform: scale(1.08);
+    box-shadow: 0 8px 25px rgba(30, 144, 255, 0.5);
 }
 
 .grid-thumb {
     width: 100%;
     height: 180px;
-    margin-bottom: 15px;
-    border-radius: 12px;
+    border-radius: 12px 12px 0 0;
     background: #1a1a1a;
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-}
-
-.thumb-video {
-    display: none;
 }
 
 .thumb-img {
@@ -148,57 +170,131 @@ body {
 }
 
 .thumb-loading {
-    color: #667eea;
-    font-size: 48px;
-    z-index: 1;
+    color: #1e90ff;
+    font-size: 24px;
 }
 
 .play-icon {
     position: absolute;
-    font-size: 56px;
+    font-size: 50px;
     color: white;
-    background: rgba(0,0,0,0.5);
-    width: 90px;
-    height: 90px;
+    background: rgba(0,0,0,0.6);
+    width: 80px;
+    height: 80px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-left: 8px;
-    z-index: 2;
+    padding-left: 6px;
+}
+
+/* Folder specific styling */
+.folder-thumb {
+    background: linear-gradient(135deg, #4a4a4a 0%, #2a2a2a 100%);
+}
+
+.folder-icon {
+    font-size: 90px;
+}
+
+/* USB device card with storage info */
+.usb-card {
+    position: relative;
+}
+
+.usb-storage-info {
+    position: absolute;
+    bottom: 65px;
+    left: 15px;
+    right: 15px;
+    background: rgba(0,0,0,0.85);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.5;
+    border: 1px solid rgba(30, 144, 255, 0.3);
+}
+
+.usb-storage-line {
+    display: flex;
+    justify-content: space-between;
+    margin: 3px 0;
+}
+
+.usb-storage-label {
+    color: #999;
+    font-size: 13px;
+}
+
+.usb-storage-value {
+    color: #1e90ff;
+    font-weight: bold;
+    font-size: 14px;
 }
 
 .grid-icon {
-    font-size: 80px;
-    margin-bottom: 15px;
+    font-size: 90px;
+    margin: 40px 0 20px 0;
 }
 
 .grid-name {
-    font-size: 18px;
-    margin-bottom: 8px;
+    font-size: 17px;
+    margin: 12px 15px 8px 15px;
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     line-height: 1.3;
-    max-height: 47px;
+    max-height: 44px;
     word-break: break-word;
-    width: 100%;
+    font-weight: 500;
 }
 
 .grid-size {
-    font-size: 16px;
-    color: #ccc;
+    font-size: 15px;
+    color: #999;
+    margin: 0 15px 12px 15px;
+}
+
+.loading-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 100;
+}
+
+.spinner {
+    width: 80px;
+    height: 80px;
+    border: 8px solid rgba(30, 144, 255, 0.2);
+    border-top: 8px solid #1e90ff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    font-size: 24px;
+    color: #1e90ff;
+    font-weight: 500;
 }
 
 .loading {
     text-align: center;
     padding: 100px;
     font-size: 32px;
-    color: #667eea;
+    color: #1e90ff;
 }
 
+/* Video Player */
 #player-screen {
     background: #000;
 }
@@ -207,6 +303,7 @@ body {
     width: 100%;
     height: 100%;
     object-fit: contain;
+    background: #000;
 }
 
 .controls-overlay {
@@ -217,6 +314,7 @@ body {
     background: linear-gradient(to top, rgba(0,0,0,0.95), transparent);
     padding: 50px 60px;
     opacity: 0;
+    transition: opacity 0.3s;
 }
 
 .controls-overlay.visible {
@@ -235,44 +333,49 @@ body {
 }
 
 .progress-bar {
-    height: 12px;
+    height: 10px;
     background: rgba(255,255,255,0.3);
-    border-radius: 6px;
+    border-radius: 5px;
+    overflow: hidden;
 }
 
 .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #667eea, #764ba2);
+    background: linear-gradient(90deg, #1e90ff, #00bfff);
     width: 0%;
+    transition: width 0.3s;
 }
 
 .control-buttons {
     display: flex;
-    gap: 60px;
+    gap: 50px;
     justify-content: center;
 }
 
 .icon-btn {
-    width: 100px;
-    height: 100px;
-    padding: 20px;
+    width: 90px;
+    height: 90px;
+    padding: 18px;
     margin: 0 10px;
     background: rgba(60,60,60,0.8);
-    border: 4px solid rgba(102,126,234,0.6);
-    border-radius: 18px;
+    border: 3px solid rgba(30,144,255,0.6);
+    border-radius: 16px;
+    transition: all 0.3s;
 }
 
 .icon-btn img {
-    width: 56px;
-    height: 56px;
+    width: 54px;
+    height: 54px;
     filter: brightness(0) invert(1);
 }
 
 .icon-btn.focused {
-    background: #667eea;
+    background: #1e90ff;
     transform: scale(1.2);
+    border-color: #00bfff;
 }
 
+/* Image Viewer */
 #image-screen {
     background: #000;
 }
@@ -293,16 +396,34 @@ body {
 
 .image-info {
     background: rgba(0,0,0,0.9);
-    padding: 30px 60px;
+    padding: 25px 60px;
 }
 
 #image-name {
-    font-size: 28px;
-    color: #667eea;
+    font-size: 26px;
+    color: #1e90ff;
 }
 
 .image-help {
-    font-size: 20px;
+    font-size: 18px;
     color: #ccc;
     float: right;
+}
+
+/* Scrollbar */
+.file-list::-webkit-scrollbar {
+    width: 12px;
+}
+
+.file-list::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+.file-list::-webkit-scrollbar-thumb {
+    background: #1e90ff;
+    border-radius: 6px;
+}
+
+.file-list::-webkit-scrollbar-thumb:hover {
+    background: #00bfff;
 }

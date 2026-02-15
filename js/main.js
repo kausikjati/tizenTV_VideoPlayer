@@ -1,4 +1,4 @@
-// Tyson Player - With Performance, Thumbnails & Image Viewer
+// Tyson Player - Enhanced with Content API Thumbnails & Improved Folder View
 
 class TysonPlayer {
     constructor() {
@@ -12,19 +12,45 @@ class TysonPlayer {
         this.imageElement = null;
         this.isPlaying = false;
         this.controlsTimeout = null;
-        this.viewMode = 'list';
-        this.batchSize = 50; // PERFORMANCE: Load 50 at a time
+        this.viewMode = 'grid'; // Start with grid view like screenshot
+        this.batchSize = 20; // Reduced for smoother scrolling
         this.loadedCount = 0;
-        this.supportedVideoFormats = ['.mp4', '.mkv', '.mov', '.wmv', '.webm', '.m4v', '.3gp', '.mpeg', '.mpg'];
-        this.supportedImageFormats = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
+        this.supportedVideoFormats = ['.mp4', '.mkv', '.mov', '.wmv', '.webm', '.m4v', '.3gp', '.mpeg', '.mpg', '.avi', '.flv', '.ts', '.m2ts', 'DAT', 'divx'];
+        this.supportedImageFormats = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif'];
+        this.thumbnailCache = {}; // Cache for Content API thumbnails
+        this.currentUSBDevice = null; // Track current USB
+        this.contentManager = null; // Tizen Content API manager
+        this.isLoading = false; // Track loading state
         
         this.init();
     }
 
     init() {
-        console.log('Init with Performance Features');
+        console.log('Init Tyson Player with Enhanced Features');
         this.videoElement = document.getElementById('video-player');
         this.imageElement = document.getElementById('image-viewer');
+        this.useAVPlay = false;
+        
+        // Check if AVPlay is available for better codec support (HEVC, MKV, etc.)
+        try {
+            if (typeof webapis !== 'undefined' && webapis.avplay) {
+                this.useAVPlay = true;
+                console.log('✓ AVPlay available - supports HEVC, 10-bit, HDR, MKV, AVI');
+            } else {
+                console.log('✗ AVPlay not available - limited to H.264 only');
+            }
+        } catch (e) {
+            console.log('AVPlay check failed, using HTML5 video');
+        }
+        
+        // Initialize Content API for thumbnails
+        try {
+            this.contentManager = tizen.content;
+            console.log('Content API initialized');
+        } catch (e) {
+            console.warn('Content API not available:', e);
+        }
+        
         this.registerKeys();
         this.setupEventListeners();
         this.scanUSBDevices();
@@ -59,7 +85,7 @@ class TysonPlayer {
             document.getElementById('video-time').textContent = `${current} / ${total}`;
         });
         
-        // PERFORMANCE: Lazy load on scroll
+        // Lazy load on scroll
         const fileList = document.getElementById('file-list');
         fileList.addEventListener('scroll', () => {
             if (fileList.scrollTop + fileList.clientHeight >= fileList.scrollHeight - 300) {
@@ -106,7 +132,15 @@ class TysonPlayer {
                 this.controlFocused = -1;
                 this.updateControlFocus();
             } else {
-                this.videoElement.pause();
+                // Stop playback
+                if (this.useAVPlay) {
+                    try {
+                        webapis.avplay.stop();
+                        webapis.avplay.close();
+                    } catch (e) {}
+                } else {
+                    this.videoElement.pause();
+                }
                 this.showScreen('browser');
             }
         }
@@ -135,7 +169,7 @@ class TysonPlayer {
                 this.headerFocused = true;
                 document.getElementById('btn-view-toggle').classList.add('focused');
             } else {
-                this.moveFocus(this.viewMode === 'grid' ? -4 : -1);
+                this.moveFocus(this.viewMode === 'grid' ? -5 : -1); // 5 columns in grid
             }
         }
     }
@@ -146,7 +180,7 @@ class TysonPlayer {
                 this.headerFocused = false;
                 document.getElementById('btn-view-toggle').classList.remove('focused');
             } else {
-                this.moveFocus(this.viewMode === 'grid' ? 4 : 1);
+                this.moveFocus(this.viewMode === 'grid' ? 5 : 1); // 5 columns in grid
             }
         }
     }
@@ -201,7 +235,7 @@ class TysonPlayer {
             }
         });
         
-        // PERFORMANCE: Load more if near end
+        // Load more if near end
         if (this.focusedIndex > this.loadedCount - 10) this.loadMoreFiles();
     }
 
@@ -225,6 +259,7 @@ class TysonPlayer {
     }
 
     scanUSBDevices() {
+        this.showLoading('Scanning USB devices...');
         try {
             tizen.filesystem.listStorages((storages) => {
                 const usbDevices = storages.filter(s => s.type === 'EXTERNAL' || s.type === 'USB');
@@ -232,30 +267,63 @@ class TysonPlayer {
                     this.showMessage('No USB found');
                     return;
                 }
+                
+                // Update header to show app name
+                document.getElementById('usb-device-name').textContent = 'Tyson Player';
+                
                 this.fileList = usbDevices.map((device, i) => ({
-                    name: device.label || `USB ${i + 1}`,
+                    name: device.label || `USB Device ${i + 1}`,
                     path: device.label,
                     type: 'usb',
-                    size: this.formatSize(device.availableCapacity || 0),
+                    size: '',
                     icon: '💾'
                 }));
+                
                 this.focusedIndex = 0;
                 this.loadedCount = 0;
+                this.hideLoading();
                 this.renderFileList();
-            }, (error) => this.showMessage('Error: ' + error.message));
+            }, (error) => {
+                this.hideLoading();
+                this.showMessage('Error: ' + error.message);
+            });
         } catch (error) {
+            this.hideLoading();
             this.showMessage('Error scanning USB');
         }
     }
 
+    showLoading(message = 'Loading...') {
+        this.isLoading = true;
+        const fileList = document.getElementById('file-list');
+        // Clear everything first to avoid showing old files
+        fileList.innerHTML = '';
+        // Then show loading spinner
+        fileList.innerHTML = `
+            <div class="loading-container">
+                <div class="spinner"></div>
+                <div class="loading-text">${message}</div>
+            </div>
+        `;
+    }
+
+    hideLoading() {
+        this.isLoading = false;
+    }
+
     navigateToPath(path) {
-        this.showMessage('Loading...');
+        this.showLoading('Loading...');
         try {
             tizen.filesystem.resolve(path, (dir) => {
                 this.currentPath = path;
                 document.getElementById('current-path').textContent = path;
+                
+                // Update header with USB device name
+                if (this.currentUSBDevice) {
+                    document.getElementById('usb-device-name').textContent = this.currentUSBDevice.name;
+                }
+                
                 dir.listFiles((files) => {
-                    // PERFORMANCE: Process async
                     setTimeout(() => {
                         this.fileList = files.map(file => ({
                             name: file.name,
@@ -271,11 +339,19 @@ class TysonPlayer {
                         });
                         this.focusedIndex = 0;
                         this.loadedCount = 0;
+                        this.hideLoading();
                         this.renderFileList();
                     }, 0);
-                }, () => this.showMessage('Cannot read folder'));
-            }, () => this.showMessage('Cannot open path'), 'r');
+                }, () => {
+                    this.hideLoading();
+                    this.showMessage('Cannot read folder');
+                });
+            }, () => {
+                this.hideLoading();
+                this.showMessage('Cannot open path');
+            }, 'r');
         } catch (error) {
+            this.hideLoading();
             this.showMessage('Navigation failed');
         }
     }
@@ -297,11 +373,13 @@ class TysonPlayer {
         this.loadMoreFiles();
     }
 
-    // PERFORMANCE: Load files in batches
     loadMoreFiles() {
         if (this.loadedCount >= this.fileList.length) return;
         const fileListEl = document.getElementById('file-list');
         const endIndex = Math.min(this.loadedCount + this.batchSize, this.fileList.length);
+        
+        // Use document fragment for better performance
+        const fragment = document.createDocumentFragment();
         
         for (let i = this.loadedCount; i < endIndex; i++) {
             const file = this.fileList[i];
@@ -309,117 +387,432 @@ class TysonPlayer {
             item.className = 'file-item' + (i === this.focusedIndex ? ' focused' : '');
             
             if (this.viewMode === 'grid') {
-                if (file.type === 'video') {
-                    // Create video element for thumbnail
+                if (file.type === 'usb') {
+                    // USB device card - simple, no storage info
+                    item.classList.add('usb-card');
                     item.innerHTML = `
-                        <div class="grid-thumb" id="thumb-${i}">
-                            <video class="thumb-video" 
-                                   src="file://${file.path}" 
-                                   preload="metadata"
-                                   muted
-                                   style="display:none;">
-                            </video>
-                            <div class="thumb-loading">🎬</div>
+                        <div class="grid-thumb folder-thumb">
+                            <div class="folder-icon">💾</div>
+                        </div>
+                        <div class="grid-name">${file.name}</div>
+                    `;
+                } else if (file.type === 'video') {
+                    item.innerHTML = `
+                        <div class="grid-thumb" data-path="${file.path}" data-index="${i}">
+                            <div class="thumb-loading">Loading...</div>
                             <div class="play-icon">▶</div>
                         </div>
                         <div class="grid-name">${file.name}</div>
                         <div class="grid-size">${file.size}</div>
                     `;
-                    // Load thumbnail after element is added
-                    setTimeout(() => this.loadVideoThumbnailDirect(file.path, i), 100);
+                    // Load thumbnail asynchronously to avoid blocking
+                    setTimeout(() => this.loadVideoThumbnailFromContentAPI(file.path, item), 100 * (i - this.loadedCount));
                 } else if (file.type === 'image') {
-                    item.innerHTML = `<div class="grid-thumb" style="background-image: url('file://${file.path}'); background-size: cover; background-position: center;"></div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
+                    item.innerHTML = `
+                        <div class="grid-thumb">
+                            <img src="file://${file.path}" class="thumb-img" onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\\'thumb-loading\\'>🖼️</div>'">
+                        </div>
+                        <div class="grid-name">${file.name}</div>
+                        <div class="grid-size">${file.size}</div>
+                    `;
+                } else if (file.type === 'folder') {
+                    item.innerHTML = `
+                        <div class="grid-thumb folder-thumb">
+                            <div class="folder-icon">📁</div>
+                        </div>
+                        <div class="grid-name">${file.name}</div>
+                        <div class="grid-size">${file.size}</div>
+                    `;
                 } else {
-                    item.innerHTML = `<div class="grid-icon">${file.icon}</div><div class="grid-name">${file.name}</div><div class="grid-size">${file.size}</div>`;
+                    item.innerHTML = `
+                        <div class="grid-icon">${file.icon}</div>
+                        <div class="grid-name">${file.name}</div>
+                        <div class="grid-size">${file.size}</div>
+                    `;
                 }
             } else {
-                item.innerHTML = `<span class="file-icon">${file.icon}</span><span class="file-name">${file.name}</span><span class="file-size">${file.size}</span>`;
+                item.innerHTML = `
+                    <span class="file-icon">${file.icon}</span>
+                    <span class="file-name">${file.name}</span>
+                    <span class="file-size">${file.size}</span>
+                `;
             }
-            fileListEl.appendChild(item);
+            fragment.appendChild(item);
         }
+        
+        fileListEl.appendChild(fragment);
         this.loadedCount = endIndex;
     }
 
-    // FEATURE: Video thumbnail using video poster
-    loadVideoThumbnailDirect(videoPath, index) {
-        const thumbEl = document.getElementById(`thumb-${index}`);
+    // SIMPLIFIED: Video thumbnail loading - try multiple methods
+    loadVideoThumbnailFromContentAPI(videoPath, itemElement) {
+        const thumbEl = itemElement.querySelector('.grid-thumb');
         if (!thumbEl) return;
         
-        const videoEl = thumbEl.querySelector('.thumb-video');
-        const loadingEl = thumbEl.querySelector('.thumb-loading');
-        
-        if (!videoEl) return;
-        
-        // Try to capture first frame
-        videoEl.addEventListener('loadeddata', () => {
-            try {
-                // Set current time to 2 seconds (or 10% of duration)
-                videoEl.currentTime = Math.min(2, videoEl.duration * 0.1);
-            } catch (e) {
-                console.log('Cannot seek video:', e);
+        // Method 1: Try direct video element snapshot (simplest)
+        this.generateThumbnailFromVideo(videoPath, itemElement, () => {
+            // Method 2: If that fails, try Content API
+            if (this.contentManager) {
+                this.tryContentAPIThumbnail(videoPath, itemElement, () => {
+                    // Method 3: If all fails, show generic icon
+                    this.showGenericVideoIcon(itemElement);
+                });
+            } else {
+                this.showGenericVideoIcon(itemElement);
             }
         });
+    }
+
+    generateThumbnailFromVideo(videoPath, itemElement, onError) {
+        const thumbEl = itemElement.querySelector('.grid-thumb');
+        if (!thumbEl) {
+            onError();
+            return;
+        }
         
-        videoEl.addEventListener('seeked', () => {
+        // Check cache first
+        if (this.thumbnailCache[videoPath]) {
+            thumbEl.style.backgroundImage = `url('${this.thumbnailCache[videoPath]}')`;
+            thumbEl.style.backgroundSize = 'cover';
+            thumbEl.style.backgroundPosition = 'center';
+            const loadingEl = thumbEl.querySelector('.thumb-loading');
+            if (loadingEl) loadingEl.style.display = 'none';
+            return;
+        }
+        
+        const video = document.createElement('video');
+        video.style.position = 'absolute';
+        video.style.left = '-9999px';
+        video.style.width = '320px';
+        video.style.height = '180px';
+        video.muted = true;
+        video.preload = 'metadata';
+        video.crossOrigin = 'anonymous';
+        
+        let captured = false;
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        let timeout = setTimeout(() => {
+            if (!captured) {
+                video.remove();
+                onError();
+            }
+        }, 5000);
+        
+        video.addEventListener('loadedmetadata', () => {
+            const seekTime = Math.min(3, video.duration * 0.05, video.duration - 0.1);
+            video.currentTime = seekTime;
+        }, { once: true });
+        
+        video.addEventListener('seeked', () => {
+            if (captured) return;
+            attempts++;
+            
             try {
-                // Show video element as thumbnail
-                videoEl.style.display = 'block';
-                videoEl.style.width = '100%';
-                videoEl.style.height = '100%';
-                videoEl.style.objectFit = 'cover';
-                videoEl.style.position = 'absolute';
-                videoEl.style.top = '0';
-                videoEl.style.left = '0';
+                const canvas = document.createElement('canvas');
+                canvas.width = 320;
+                canvas.height = 180;
+                const ctx = canvas.getContext('2d', { willReadFrequently: false });
+                ctx.drawImage(video, 0, 0, 320, 180);
+                
+                // Check for black frame
+                const imageData = ctx.getImageData(160, 90, 1, 1);
+                const centerPixel = imageData.data;
+                const isBlack = centerPixel[0] < 10 && centerPixel[1] < 10 && centerPixel[2] < 10;
+                
+                if (isBlack && attempts < maxAttempts) {
+                    video.currentTime = Math.min(video.currentTime + 2, video.duration * 0.15);
+                    return;
+                }
+                
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                this.thumbnailCache[videoPath] = dataUrl;
+                
+                thumbEl.style.backgroundImage = `url('${dataUrl}')`;
+                thumbEl.style.backgroundSize = 'cover';
+                thumbEl.style.backgroundPosition = 'center';
+                const loadingEl = thumbEl.querySelector('.thumb-loading');
                 if (loadingEl) loadingEl.style.display = 'none';
+                
+                captured = true;
+                clearTimeout(timeout);
+                video.remove();
             } catch (e) {
-                console.log('Cannot display video frame:', e);
+                console.warn('Canvas capture failed:', e);
+                clearTimeout(timeout);
+                video.remove();
+                onError();
             }
         });
         
-        videoEl.addEventListener('error', (e) => {
-            console.log('Video thumbnail load error:', e);
-            if (loadingEl) loadingEl.textContent = '🎬';
-        });
+        video.addEventListener('error', (e) => {
+            clearTimeout(timeout);
+            video.remove();
+            onError();
+        }, { once: true });
+        
+        video.src = 'file://' + videoPath;
+        document.body.appendChild(video);
+        video.load();
+    }
+
+    tryContentAPIThumbnail(videoPath, itemElement, onError) {
+        try {
+            const filter = new tizen.AttributeFilter('contentURI', 'EXACTLY', 'file://' + videoPath);
+            
+            this.contentManager.find(
+                (contents) => {
+                    if (contents && contents.length > 0 && contents[0].thumbnailURIs && contents[0].thumbnailURIs.length > 0) {
+                        const thumbURI = contents[0].thumbnailURIs[0];
+                        this.thumbnailCache[videoPath] = thumbURI;
+                        this.applyThumbnail(itemElement, thumbURI);
+                    } else {
+                        onError();
+                    }
+                },
+                (error) => {
+                    console.warn('Content API error:', error);
+                    onError();
+                },
+                null,
+                filter
+            );
+        } catch (e) {
+            console.warn('Content API exception:', e);
+            onError();
+        }
+    }
+
+    showGenericVideoIcon(itemElement) {
+        const thumbEl = itemElement.querySelector('.grid-thumb');
+        if (!thumbEl) return;
+        
+        const loadingEl = thumbEl.querySelector('.thumb-loading');
+        if (loadingEl) {
+            loadingEl.textContent = '🎬';
+            loadingEl.style.fontSize = '64px';
+        }
+    }
+
+    applyThumbnail(itemElement, thumbURI) {
+        const thumbEl = itemElement.querySelector('.grid-thumb');
+        if (!thumbEl) return;
+        
+        thumbEl.style.backgroundImage = `url('${thumbURI}')`;
+        thumbEl.style.backgroundSize = 'cover';
+        thumbEl.style.backgroundPosition = 'center';
+        
+        const loadingEl = thumbEl.querySelector('.thumb-loading');
+        if (loadingEl) loadingEl.style.display = 'none';
     }
 
     selectFile() {
         const file = this.fileList[this.focusedIndex];
-        if (!file) {
-            console.log('No file selected');
-            return;
+        if (!file) return;
+        
+        if (file.type === 'usb') {
+            // Store USB device info before navigating
+            this.currentUSBDevice = file;
+            this.navigateToPath(file.path);
+        } else if (file.type === 'folder') {
+            this.navigateToPath(file.path);
+        } else if (file.type === 'video') {
+            this.playVideo(file);
+        } else if (file.type === 'image') {
+            this.viewImage(file);
         }
-        console.log('File selected:', file.name, 'Type:', file.type);
-        if (file.type === 'usb' || file.type === 'folder') this.navigateToPath(file.path);
-        else if (file.type === 'video') this.playVideo(file);
-        else if (file.type === 'image') this.viewImage(file);
-        else console.log('Unknown file type:', file.type);
     }
 
     playVideo(file) {
-        if (file.name.toLowerCase().endsWith('.avi')) {
-            alert('⚠️ AVI Not Supported\\n\\nConvert to MP4');
-            return;
+        if (this.useAVPlay) {
+            this.playVideoWithAVPlay(file);
+        } else {
+            this.playVideoWithHTML5(file);
         }
+    }
+
+    playVideoWithAVPlay(file) {
+        console.log('Playing with AVPlay:', file.name);
+        
+        try {
+            // Stop any existing playback
+            try {
+                webapis.avplay.stop();
+                webapis.avplay.close();
+            } catch (e) {}
+            
+            // Setup AVPlay listeners with detailed error handling
+            const avplayListener = {
+                onbufferingstart: () => {
+                    console.log('Buffering...');
+                    this.showBufferingIndicator(true);
+                },
+                onbufferingcomplete: () => {
+                    console.log('Buffering complete');
+                    this.showBufferingIndicator(false);
+                },
+                onstreamcompleted: () => {
+                    console.log('Stream completed');
+                    try {
+                        webapis.avplay.stop();
+                        webapis.avplay.close();
+                    } catch (e) {}
+                    this.showScreen('browser');
+                },
+                oncurrentplaytime: (currentTime) => {
+                    try {
+                        const duration = webapis.avplay.getDuration();
+                        const percent = (currentTime / duration) * 100;
+                        document.getElementById('progress-fill').style.width = percent + '%';
+                        document.getElementById('video-time').textContent = 
+                            `${this.formatTime(currentTime / 1000)} / ${this.formatTime(duration / 1000)}`;
+                    } catch (e) {}
+                },
+                onerror: (eventType) => {
+                    console.error('AVPlay error:', eventType);
+                    
+                    // Decode error type
+                    let errorMsg = 'Playback error occurred.';
+                    const errorTypes = {
+                        'PLAYER_ERROR_NONE': 'No error',
+                        'PLAYER_ERROR_INVALID_PARAMETER': 'Invalid parameter',
+                        'PLAYER_ERROR_NO_SUCH_FILE': 'File not found',
+                        'PLAYER_ERROR_INVALID_OPERATION': 'Invalid operation',
+                        'PLAYER_ERROR_SEEK_FAILED': 'Seek failed',
+                        'PLAYER_ERROR_INVALID_STATE': 'Invalid state',
+                        'PLAYER_ERROR_NOT_SUPPORTED_FILE': 'File format not supported',
+                        'PLAYER_ERROR_INVALID_URI': 'Invalid file path',
+                        'PLAYER_ERROR_CONNECTION_FAILED': 'Connection failed',
+                        'PLAYER_ERROR_GENREIC': 'Generic error'
+                    };
+                    
+                    // Try to get specific error
+                    if (typeof eventType === 'string' && errorTypes[eventType]) {
+                        errorMsg = errorTypes[eventType];
+                    }
+                    
+                    // Check file-specific issues
+                    const fileName = file.name.toLowerCase();
+                    if (fileName.endsWith('.avi')) {
+                        errorMsg += '\n\nAVI codec issue.\nThis AVI file may use an unsupported codec (DivX, XviD old versions).\n\nTry:\n1. Converting to MP4 (H.264)\n2. Re-encoding AVI with modern codec';
+                    } else if (fileName.includes('hevc') || fileName.includes('x265')) {
+                        errorMsg += '\n\nHEVC issue.\nYour TV may not support:\n- 10-bit color depth\n- High bitrate HEVC\n- Specific HEVC profile\n\nTry converting to H.264';
+                    } else if (fileName.endsWith('.mkv')) {
+                        errorMsg += '\n\nMKV codec issue.\nThe audio/video codec inside may not be supported.\n\nCommon issues:\n- Vorbis audio\n- VP9 video\n- Hi10P anime\n\nTry converting to MP4 with H.264 + AAC';
+                    } else if (fileName.endsWith('.flv')) {
+                        errorMsg += '\n\nFLV format issue.\nOld Flash video format.\n\nConvert to MP4 for better compatibility';
+                    }
+                    
+                    alert(errorMsg);
+                    
+                    try {
+                        webapis.avplay.stop();
+                        webapis.avplay.close();
+                    } catch (e) {}
+                    this.showScreen('browser');
+                },
+                onevent: (eventType, eventData) => {
+                    console.log('AVPlay event:', eventType, eventData);
+                },
+                ondrmevent: (drmEvent, drmData) => {
+                    console.log('DRM event:', drmEvent, drmData);
+                }
+            };
+            
+            // Open and prepare
+            const filePath = 'file://' + file.path;
+            console.log('Opening:', filePath);
+            
+            webapis.avplay.open(filePath);
+            webapis.avplay.setListener(avplayListener);
+            
+            // Set display area to full screen
+            webapis.avplay.setDisplayRect(0, 0, 1920, 1080);
+            
+            // Set display method - auto scaling
+            webapis.avplay.setDisplayMethod('PLAYER_DISPLAY_MODE_AUTO_ASPECT_RATIO');
+            
+            document.getElementById('video-title').textContent = file.name;
+            this.showScreen('player');
+            
+            // Hide HTML5 video element
+            this.videoElement.style.display = 'none';
+            
+            // Prepare asynchronously
+            webapis.avplay.prepareAsync(() => {
+                console.log('Prepared, starting playback');
+                webapis.avplay.play();
+                this.isPlaying = true;
+                document.getElementById('btn-play-pause').innerHTML = '<img src="images/pause.svg">';
+            }, (error) => {
+                console.error('Prepare failed:', error);
+                alert('Failed to prepare video.\n\n' + error);
+                this.showScreen('browser');
+            });
+            
+            this.showControls();
+            
+        } catch (error) {
+            console.error('AVPlay setup failed:', error);
+            alert('Cannot initialize AVPlay.\n\nError: ' + error.message + '\n\nTry:\n1. Restarting the TV\n2. Converting video to MP4 H.264');
+            this.showScreen('browser');
+        }
+    }
+
+    showBufferingIndicator(show) {
+        // Add buffering indicator (optional enhancement)
+        if (show) {
+            document.getElementById('video-title').textContent += ' (Buffering...)';
+        }
+    }
+
+    playVideoWithHTML5(file) {
+        console.log('Playing with HTML5 video:', file.name);
+        this.videoElement.style.display = 'block';
         this.videoElement.src = 'file://' + file.path;
         document.getElementById('video-title').textContent = file.name;
         this.showScreen('player');
         this.controlFocused = -1;
-        this.videoElement.play().catch(err => alert('Cannot play: ' + err.message));
+        
+        // Better error handling for unsupported codecs
+        this.videoElement.play().catch(err => {
+            console.error('Playback error:', err);
+            let errorMsg = 'Cannot play this video';
+            
+            // Check for codec issues
+            if (file.name.toLowerCase().includes('hevc') || 
+                file.name.toLowerCase().includes('x265') || 
+                file.name.toLowerCase().includes('h265')) {
+                errorMsg = 'HEVC/H.265 codec not supported in HTML5 mode.\n\nAVPlay is needed but unavailable.\n\nPlease convert to H.264 (x264) format.';
+            } else if (file.name.toLowerCase().includes('10bit')) {
+                errorMsg = '10-bit video not supported.\n\nPlease use 8-bit version.';
+            } else if (file.name.toLowerCase().includes('hdr')) {
+                errorMsg = 'HDR video may not be supported.\n\nTry SDR version or check TV settings.';
+            } else if (file.name.toLowerCase().endsWith('.mkv')) {
+                errorMsg = 'MKV container issue or unsupported codec.\n\nTry converting to MP4 with H.264.';
+            }
+            
+            alert(errorMsg);
+            this.showScreen('browser');
+        });
         this.showControls();
     }
 
-    // FEATURE: Image viewer
     viewImage(file) {
-        console.log('Opening image viewer for:', file.name, file.path);
-        try {
-            this.imageElement.src = 'file://' + file.path;
-            document.getElementById('image-name').textContent = file.name;
-            this.showScreen('image');
-            console.log('Image viewer screen should be visible now');
-        } catch (e) {
-            console.error('Image viewer error:', e);
-            alert('Cannot open image: ' + e.message);
+        // Check if HEIC - these need special handling
+        if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
+            alert('HEIC/HEIF images are not supported by this TV browser.\n\nPlease convert to JPG or PNG format.');
+            return;
         }
+        
+        this.imageElement.src = 'file://' + file.path;
+        this.imageElement.onerror = () => {
+            alert('Cannot open this image format.\n\nSupported: JPG, PNG, GIF, BMP, WebP');
+            this.showScreen('browser');
+        };
+        document.getElementById('image-name').textContent = file.name;
+        this.showScreen('image');
     }
 
     navigateImage(direction) {
@@ -436,20 +829,64 @@ class TysonPlayer {
 
     togglePlayPause() {
         if (this.currentScreen !== 'player') return;
-        if (this.videoElement.paused) this.videoElement.play();
-        else this.videoElement.pause();
+        
+        if (this.useAVPlay) {
+            try {
+                const state = webapis.avplay.getState();
+                if (state === 'PLAYING') {
+                    webapis.avplay.pause();
+                    this.isPlaying = false;
+                    document.getElementById('btn-play-pause').innerHTML = '<img src="images/play.svg">';
+                } else if (state === 'PAUSED') {
+                    webapis.avplay.play();
+                    this.isPlaying = true;
+                    document.getElementById('btn-play-pause').innerHTML = '<img src="images/pause.svg">';
+                }
+            } catch (e) {
+                console.error('AVPlay control error:', e);
+            }
+        } else {
+            if (this.videoElement.paused) {
+                this.videoElement.play();
+            } else {
+                this.videoElement.pause();
+            }
+        }
         this.showControls();
     }
 
     seekBackward() {
         if (this.currentScreen !== 'player') return;
-        this.videoElement.currentTime = Math.max(0, this.videoElement.currentTime - 10);
+        
+        if (this.useAVPlay) {
+            try {
+                const currentTime = webapis.avplay.getCurrentTime();
+                const newTime = Math.max(0, currentTime - 10000); // AVPlay uses milliseconds
+                webapis.avplay.seekTo(newTime);
+            } catch (e) {
+                console.error('AVPlay seek error:', e);
+            }
+        } else {
+            this.videoElement.currentTime = Math.max(0, this.videoElement.currentTime - 10);
+        }
         this.showControls();
     }
 
     seekForward() {
         if (this.currentScreen !== 'player') return;
-        this.videoElement.currentTime = Math.min(this.videoElement.duration, this.videoElement.currentTime + 10);
+        
+        if (this.useAVPlay) {
+            try {
+                const currentTime = webapis.avplay.getCurrentTime();
+                const duration = webapis.avplay.getDuration();
+                const newTime = Math.min(duration, currentTime + 10000); // AVPlay uses milliseconds
+                webapis.avplay.seekTo(newTime);
+            } catch (e) {
+                console.error('AVPlay seek error:', e);
+            }
+        } else {
+            this.videoElement.currentTime = Math.min(this.videoElement.duration, this.videoElement.currentTime + 10);
+        }
         this.showControls();
     }
 
@@ -463,14 +900,10 @@ class TysonPlayer {
     }
 
     showScreen(screenName) {
-        console.log('Switching to screen:', screenName);
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         const targetScreen = document.getElementById(screenName + '-screen');
         if (targetScreen) {
             targetScreen.classList.add('active');
-            console.log('Screen activated:', screenName);
-        } else {
-            console.error('Screen not found:', screenName + '-screen');
         }
         this.currentScreen = screenName;
     }
@@ -501,7 +934,11 @@ class TysonPlayer {
     }
 
     showMessage(message) {
-        document.getElementById('file-list').innerHTML = `<div class="loading">${message}</div>`;
+        document.getElementById('file-list').innerHTML = `
+            <div class="loading-container">
+                <div class="loading-text">${message}</div>
+            </div>
+        `;
     }
 }
 
